@@ -13,7 +13,7 @@ main :: IO ()
 main = do
     broadcastChannel <- atomically newBroadcastTChan :: IO CicaChannel
     sock <- createSocket
-    acceptSocket 0 sock broadcastChannel
+    acceptSocket 1 sock broadcastChannel
 
 consume :: Int -> Socket -> CicaChannel -> IO ()
 consume userId sock channel = forever $ do
@@ -22,9 +22,12 @@ consume userId sock channel = forever $ do
 
 produce :: Int -> Socket -> CicaChannel -> IO ()
 produce userId sock channel = forever $ do
-    (Message userId msg) <- atomically $ readTChan channel
-    send sock msg
-    pure ()
+    (Message senderId msg) <- atomically $ readTChan channel
+    if senderId == userId then
+        pure ()
+    else do
+        send sock ("[" ++ (show senderId)++ "]:" ++ msg)
+        pure ()
 
 createSocket :: IO Socket
 createSocket = do
@@ -40,4 +43,5 @@ acceptSocket userId listeningSocket channel = do
     _ <- forkIO $ consume userId sock channel
     broadcastChannel <- atomically $ dupTChan channel
     _ <- forkIO $ produce userId sock broadcastChannel
+    atomically $ writeTChan channel $ Message 0 ("User [" ++ (show userId) ++ "] joined\n")
     acceptSocket (userId + 1) listeningSocket channel
