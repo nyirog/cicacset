@@ -13,15 +13,15 @@ main :: IO ()
 main = do
     broadcastChannel <- atomically newBroadcastTChan :: IO CicaChannel
     sock <- createSocket
-    acceptSocket sock broadcastChannel
+    acceptSocket 0 sock broadcastChannel
 
-consume :: Socket -> CicaChannel -> IO ()
-consume sock channel = forever $ do
+consume :: Int -> Socket -> CicaChannel -> IO ()
+consume userId sock channel = forever $ do
     msg <- recv sock 122
-    atomically $ writeTChan channel $ Message 0 msg
+    atomically $ writeTChan channel $ Message userId  msg
 
-produce :: Socket -> CicaChannel -> IO ()
-produce sock channel = forever $ do
+produce :: Int -> Socket -> CicaChannel -> IO ()
+produce userId sock channel = forever $ do
     (Message userId msg) <- atomically $ readTChan channel
     send sock msg
     pure ()
@@ -34,10 +34,10 @@ createSocket = do
     listen sock 5
     pure sock
 
-acceptSocket :: Socket ->  CicaChannel -> IO ()
-acceptSocket listeningSocket channel = forever $ do
+acceptSocket :: Int -> Socket ->  CicaChannel -> IO ()
+acceptSocket userId listeningSocket channel = do
     sock <- fst <$> accept listeningSocket
-    _ <- forkIO $ consume sock channel
+    _ <- forkIO $ consume userId sock channel
     broadcastChannel <- atomically $ dupTChan channel
-    _ <- forkIO $ produce sock broadcastChannel
-    pure ()
+    _ <- forkIO $ produce userId sock broadcastChannel
+    acceptSocket (userId + 1) listeningSocket channel
