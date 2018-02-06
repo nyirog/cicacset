@@ -2,6 +2,7 @@ module Main where
 
 import Lib
 import Control.Monad (forever)
+import Control.Exception (try, IOException)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM (TChan, atomically, writeTChan, readTChan, newTChanIO, newBroadcastTChan, dupTChan)
 import Network.Socket
@@ -16,9 +17,15 @@ main = do
     acceptSocket 1 sock broadcastChannel
 
 consume :: Int -> Socket -> CicaChannel -> IO ()
-consume userId sock channel = forever $ do
-    msg <- recv sock 122
-    atomically $ writeTChan channel $ Message userId  msg
+consume userId sock channel = do
+    msg <- try (recv sock 122) :: IO (Either IOException String)
+    case msg of
+        Left error -> do
+            atomically $ writeTChan channel $ Message 0 ("User [" ++ (show userId) ++ "] left\n")
+            pure ()
+        Right message -> do
+            atomically $ writeTChan channel $ Message userId message
+            consume userId sock channel
 
 produce :: Int -> Socket -> CicaChannel -> IO ()
 produce userId sock channel = forever $ do
@@ -26,7 +33,7 @@ produce userId sock channel = forever $ do
     if senderId == userId then
         pure ()
     else do
-        send sock ("[" ++ (show senderId)++ "]:" ++ msg)
+        send sock ("[" ++ (show senderId)++ "]: " ++ msg)
         pure ()
 
 createSocket :: IO Socket
