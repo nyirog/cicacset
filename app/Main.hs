@@ -1,6 +1,7 @@
 module Main where
 
 import Lib
+import Control.Monad (forever)
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Concurrent.STM (TChan, atomically, writeTChan, readTChan, newTChanIO, newBroadcastTChan, dupTChan)
 import Network.Socket
@@ -9,11 +10,9 @@ type CicaChannel = TChan String
 
 main :: IO ()
 main = do
-    readerChannel <- newTChanIO :: IO CicaChannel
     broadcastChannel <- atomically newBroadcastTChan :: IO CicaChannel
-    _ <- forkIO $ forwardMessage readerChannel broadcastChannel
     sock <- createSocket
-    acceptSocket sock readerChannel broadcastChannel
+    acceptSocket sock broadcastChannel
 
 consume :: Socket -> CicaChannel -> IO ()
 consume sock channel = forever $ do
@@ -23,19 +22,8 @@ consume sock channel = forever $ do
 produce :: Socket -> CicaChannel -> IO ()
 produce sock channel = forever $ do
     msg <- atomically $ readTChan channel
-
     send sock msg
     pure ()
-
-forever :: Monad a => a () -> a ()
-forever u = do
-    u
-    forever u
-
-forwardMessage :: CicaChannel -> CicaChannel -> IO ()
-forwardMessage readerChannel broadcastChannel = forever $ do
-    msg <- atomically $ readTChan readerChannel
-    atomically $ writeTChan broadcastChannel msg
 
 createSocket :: IO Socket
 createSocket = do
@@ -45,10 +33,10 @@ createSocket = do
   listen sock 5
   pure sock
 
-acceptSocket :: Socket -> CicaChannel -> CicaChannel -> IO ()
-acceptSocket listeningSocket readerChannel broadcastChannel = forever $ do
+acceptSocket :: Socket ->  CicaChannel -> IO ()
+acceptSocket listeningSocket channel = forever $ do
     sock <- fst <$> accept listeningSocket
-    _ <- forkIO $ consume sock readerChannel
-    bb <- atomically $ dupTChan broadcastChannel
-    _ <- forkIO $ produce sock bb
+    _ <- forkIO $ consume sock channel
+    broadcastChannel <- atomically $ dupTChan channel
+    _ <- forkIO $ produce sock broadcastChannel
     pure ()
